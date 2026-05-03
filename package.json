@@ -1,0 +1,9 @@
+{
+  "name": "mita-assistant",
+  "version": "1.0.0",
+  "description": "MITA - Machine Intelligence Thinking Assistant",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}
