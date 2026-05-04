@@ -17,22 +17,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const contents = messages.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }));
+    const contents = [
+      { role: 'user', parts: [{ text: 'Voce e MITA, uma IA inteligente e tecnica. Responda sempre em portugues do Brasil.' }] },
+      { role: 'model', parts: [{ text: 'Entendido! Sou MITA, pronta para ajudar.' }] },
+      ...messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }))
+    ];
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: 'Voce e MITA (Machine Intelligence Thinking Assistant), uma IA inteligente, direta e tecnica. Responda sempre em portugues do Brasil. Para codigo use blocos com ```.' }]
-          },
-          contents
-        }),
+        body: JSON.stringify({ contents }),
       }
     );
 
