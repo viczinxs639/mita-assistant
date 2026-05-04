@@ -8,12 +8,12 @@ export default async function handler(req, res) {
 
   const { messages } = req.body;
   if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: 'Campo messages obrigatório' });
+    return res.status(400).json({ error: 'Campo messages obrigatorio' });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Chave de API não configurada no servidor' });
+    return res.status(500).json({ error: 'Chave de API nao configurada' });
   }
 
   try {
@@ -27,24 +27,14 @@ export default async function handler(req, res) {
         model: 'gpt-4o-mini',
         max_tokens: 1024,
         messages: [
-          {
-            role: 'system',
-            content: `Você é MITA (Machine Intelligence Thinking Assistant), uma IA avançada, direta e técnica.
-Responda sempre em português do Brasil a menos que o usuário escreva em outro idioma.
-Personalidade: inteligente, precisa, direta, com profundidade técnica quando necessário.
-Para código, use blocos com \`\`\`. Seja concisa mas completa.`
-          },
+          { role: 'system', content: 'Voce e MITA, uma IA inteligente e tecnica. Responda em portugues do Brasil.' },
           ...messages
         ],
       }),
     });
 
     const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || 'Erro na API' });
-    }
-
+    if (!response.ok) return res.status(response.status).json({ error: data.error?.message || 'Erro na API' });
     return res.status(200).json({ reply: data.choices?.[0]?.message?.content || '' });
   } catch (err) {
     return res.status(500).json({ error: 'Erro interno: ' + err.message });
