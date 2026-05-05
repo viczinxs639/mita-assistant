@@ -24,7 +24,7 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'llama3-8b-8192',
+        model: 'llama-3.3-70b-versatile',
         max_tokens: 1024,
         messages: [
           { role: 'system', content: 'Voce e MITA (Machine Intelligence Thinking Assistant), uma IA inteligente, direta e tecnica. Responda sempre em portugues do Brasil. Para codigo use blocos com ```.' },
