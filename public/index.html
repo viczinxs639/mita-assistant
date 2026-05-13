@@ -1052,3 +1052,246 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 500);
 });
 </script>
+<style>
+/* ── VOICE STYLES ── */
+.voice-btn{height:42px;width:42px;font-size:18px;flex-shrink:0;transition:all .2s;position:relative;}
+.voice-btn.listening{border-color:var(--red)!important;color:var(--red)!important;animation:voicePulse 1s ease-in-out infinite;}
+.voice-btn.speaking{border-color:var(--green)!important;color:var(--green)!important;animation:voicePulse 1.5s ease-in-out infinite;}
+@keyframes voicePulse{0%,100%{box-shadow:0 0 0 0 currentColor}50%{box-shadow:0 0 0 6px transparent}}
+.voice-wave{display:none;align-items:center;justify-content:center;gap:3px;position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);width:60px;}
+.voice-btn.listening .voice-wave{display:flex;}
+.voice-bar{width:3px;background:var(--red);border-radius:2px;animation:waveBar .6s ease-in-out infinite;}
+.voice-bar:nth-child(1){height:8px;animation-delay:0s;}
+.voice-bar:nth-child(2){height:14px;animation-delay:.1s;}
+.voice-bar:nth-child(3){height:10px;animation-delay:.2s;}
+.voice-bar:nth-child(4){height:16px;animation-delay:.15s;}
+.voice-bar:nth-child(5){height:8px;animation-delay:.05s;}
+@keyframes waveBar{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+.voice-indicator{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--bg1);border:1px solid var(--border);padding:10px 20px;font-size:10px;letter-spacing:2px;z-index:100;display:none;align-items:center;gap:10px;border-radius:20px;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+.voice-indicator.active{display:flex;}
+.voice-indicator.listening{border-color:var(--red);color:var(--red);}
+.voice-indicator.speaking{border-color:var(--green);color:var(--green);}
+.auto-speak-toggle{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--t3);cursor:pointer;padding:2px 0;}
+.auto-speak-toggle input{cursor:pointer;}
+</style>
+
+<div class="voice-indicator" id="voice-indicator">
+  <span id="voice-indicator-text">OUVINDO...</span>
+</div>
+
+<script>
+// ── VOICE SYSTEM ──
+let recognition = null;
+let synth = window.speechSynthesis;
+let isListening = false;
+let isSpeaking = false;
+let autoSpeak = false;
+let voiceBtn = null;
+let speakBtn = null;
+
+function initVoice() {
+  const wrap = document.querySelector('.input-wrap');
+  if (!wrap || document.getElementById('voice-btn')) return;
+
+  // Mic button
+  voiceBtn = document.createElement('button');
+  voiceBtn.className = 'icon-btn voice-btn';
+  voiceBtn.id = 'voice-btn';
+  voiceBtn.title = 'Falar com a MITA';
+  voiceBtn.innerHTML = `🎤<div class="voice-wave"><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div></div>`;
+  voiceBtn.onclick = toggleListening;
+  wrap.appendChild(voiceBtn);
+
+  // Auto-speak toggle na input footer
+  const footer = document.querySelector('.input-footer');
+  if (footer) {
+    const autoDiv = document.createElement('label');
+    autoDiv.className = 'auto-speak-toggle';
+    autoDiv.innerHTML = `<input type="checkbox" id="auto-speak-cb" onchange="toggleAutoSpeak(this.checked)"> MITA falar`;
+    footer.appendChild(autoDiv);
+  }
+
+  // Speak last response button no header
+  const hRight = document.querySelector('.h-right');
+  if (hRight && !document.getElementById('speak-btn')) {
+    speakBtn = document.createElement('button');
+    speakBtn.className = 'icon-btn';
+    speakBtn.id = 'speak-btn';
+    speakBtn.title = 'Ouvir última resposta';
+    speakBtn.innerHTML = '🔊';
+    speakBtn.onclick = speakLastResponse;
+    hRight.insertBefore(speakBtn, hRight.firstChild);
+  }
+
+  setupRecognition();
+}
+
+function setupRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showToast('Seu navegador não suporta reconhecimento de voz', 'error');
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = 'pt-BR';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    isListening = true;
+    voiceBtn?.classList.add('listening');
+    setVoiceIndicator('listening', '🎤 OUVINDO...');
+    showToast('Pode falar!', 'info');
+  };
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+    const input = document.getElementById('user-input');
+    if (input) {
+      input.value = final || interim;
+      autoResize(input);
+      updateCount();
+    }
+  };
+
+  recognition.onend = () => {
+    isListening = false;
+    voiceBtn?.classList.remove('listening');
+    hideVoiceIndicator();
+    const input = document.getElementById('user-input');
+    if (input?.value.trim()) {
+      setTimeout(() => sendMessage(), 300);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    isListening = false;
+    voiceBtn?.classList.remove('listening');
+    hideVoiceIndicator();
+    const msgs = { 'not-allowed': 'Permita o acesso ao microfone', 'no-speech': 'Nenhuma fala detectada', 'network': 'Erro de rede' };
+    showToast(msgs[e.error] || 'Erro: ' + e.error, 'error');
+  };
+}
+
+function toggleListening() {
+  if (!recognition) { setupRecognition(); if (!recognition) return; }
+  if (isListening) {
+    recognition.stop();
+  } else {
+    if (isSpeaking) stopSpeaking();
+    try { recognition.start(); } catch(e) { showToast('Erro ao iniciar microfone', 'error'); }
+  }
+}
+
+// ── TEXT TO SPEECH ──
+function speak(text) {
+  if (!synth) return;
+  stopSpeaking();
+
+  // Limpa markdown
+  const clean = text
+    .replace(/```[\s\S]*?```/g, 'bloco de código')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/#{1,3} /g, '')
+    .replace(/\n/g, ' ')
+    .replace(/[^\w\s.,!?;:áéíóúãõâêôàç\-]/gi, '')
+    .trim();
+
+  if (!clean) return;
+
+  const utter = new SpeechSynthesisUtterance(clean);
+  utter.lang = 'pt-BR';
+  utter.rate = 1.0;
+  utter.pitch = 1.0;
+  utter.volume = 1.0;
+
+  // Tenta usar voz em português
+  const voices = synth.getVoices();
+  const ptVoice = voices.find(v => v.lang.startsWith('pt')) ||
+                  voices.find(v => v.lang.startsWith('pt-BR')) ||
+                  voices.find(v => v.name.toLowerCase().includes('portuguese'));
+  if (ptVoice) utter.voice = ptVoice;
+
+  utter.onstart = () => {
+    isSpeaking = true;
+    voiceBtn?.classList.add('speaking');
+    speakBtn && (speakBtn.innerHTML = '⏹');
+    speakBtn && (speakBtn.title = 'Parar');
+    setVoiceIndicator('speaking', '🔊 MITA FALANDO...');
+  };
+
+  utter.onend = utter.onerror = () => {
+    isSpeaking = false;
+    voiceBtn?.classList.remove('speaking');
+    speakBtn && (speakBtn.innerHTML = '🔊');
+    speakBtn && (speakBtn.title = 'Ouvir última resposta');
+    hideVoiceIndicator();
+  };
+
+  synth.speak(utter);
+}
+
+function stopSpeaking() {
+  synth?.cancel();
+  isSpeaking = false;
+  voiceBtn?.classList.remove('speaking');
+  if (speakBtn) { speakBtn.innerHTML = '🔊'; speakBtn.title = 'Ouvir última resposta'; }
+  hideVoiceIndicator();
+}
+
+function speakLastResponse() {
+  if (isSpeaking) { stopSpeaking(); return; }
+  const msgs = activeSession?.messages;
+  if (!msgs?.length) return showToast('Sem resposta para falar', 'error');
+  const last = [...msgs].reverse().find(m => m.role === 'assistant');
+  if (last) speak(last.content);
+  else showToast('Nenhuma resposta da MITA ainda', 'error');
+}
+
+function toggleAutoSpeak(val) {
+  autoSpeak = val;
+  showToast('MITA falar: ' + (val ? 'ativado' : 'desativado'), 'info');
+}
+
+function setVoiceIndicator(type, text) {
+  const ind = document.getElementById('voice-indicator');
+  if (!ind) return;
+  ind.className = 'voice-indicator active ' + type;
+  document.getElementById('voice-indicator-text').textContent = text;
+}
+
+function hideVoiceIndicator() {
+  const ind = document.getElementById('voice-indicator');
+  if (ind) ind.className = 'voice-indicator';
+}
+
+// Hook: falar resposta automaticamente
+const _origRender = window.renderMessage;
+window.renderMessage = function(role, content, animate, msgId) {
+  const id = _origRender(role, content, animate, msgId);
+  if (role === 'assistant' && autoSpeak) {
+    setTimeout(() => speak(content), 400);
+  }
+  return id;
+};
+
+// Inicia quando app ficar visível
+const voiceObserver = new MutationObserver(() => {
+  const app = document.getElementById('app');
+  if (app && app.style.display !== 'none') {
+    initVoice();
+  }
+});
+voiceObserver.observe(document.getElementById('app') || document.body, { attributes: true, subtree: true });
+window.addEventListener('load', () => setTimeout(initVoice, 800));
+</script>
